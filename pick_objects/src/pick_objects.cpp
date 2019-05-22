@@ -50,9 +50,16 @@ int main(int argc, char** argv){
     ROS_INFO("Waiting for the move_base action server to come up");
   }
   
-  SendGoalToRobot(ac, 0.6, 4.9, 1.5, "First Goal");
+  SendGoalToRobot(ac, 0.6, 4.9, -1.0, "First Goal");
   sleep(5);
-  SendGoalToRobot(ac, -4.75, -0.25, 3.14, "Second Goal");
+  SendGoalToRobot(ac, -4.75, -0.5, 1.0, "Second Goal");
+
+  // Keep spinning for debug output
+  ros::Duration time_between_ros_wakeups(0.001);
+  while (ros::ok()) {
+      ros::spinOnce();
+      time_between_ros_wakeups.sleep();
+  }
 
   return 0;
 }

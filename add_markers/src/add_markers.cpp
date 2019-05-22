@@ -1,5 +1,18 @@
 #include <ros/ros.h>
 #include <visualization_msgs/Marker.h>
+#include <nav_msgs/Odometry.h>
+
+ros::Subscriber odom_subscriber;
+
+float goals[2][2] =
+{
+    {+0.6,  +4.9},
+    {-4.75, -0.5}
+};
+
+int current_goal = 0;
+bool current_goal_reached = false;
+const float epsilon = 0.2f;
 
 void SetMarker(ros::Publisher& marker_pub, visualization_msgs::Marker& marker, float x, float y, bool visible)
 {
@@ -29,10 +42,36 @@ void SetMarker(ros::Publisher& marker_pub, visualization_msgs::Marker& marker, f
     marker_pub.publish(marker);
 }
 
+// The laser_callback function will be called each time a laser scan data is received
+void odom_callback(const nav_msgs::Odometry::ConstPtr& nav_msg)
+{
+    if (current_goal_reached)   // Nothing to do
+        return;
+
+    //ROS_INFO("Position-> x: [%f], y: [%f], z: [%f]",
+    //    nav_msg->pose.pose.position.x, nav_msg->pose.pose.position.y, nav_msg->pose.pose.position.z);
+
+    float dx = nav_msg->pose.pose.position.x - goals[current_goal][0];
+    float dy = nav_msg->pose.pose.position.y - goals[current_goal][1];
+
+    float d = sqrt(dx*dx + dy*dy);
+    
+    ROS_INFO("Distance = %f\n", d);
+
+    if (d < epsilon)
+    {
+        current_goal_reached = true;
+    }
+}
+
 int main( int argc, char** argv )
 {
   ros::init(argc, argv, "add_markers");
   ros::NodeHandle n;
+
+  // Subscribe to the /scan topic and call the laser_callback function
+  odom_subscriber = n.subscribe("/odom", 1000, odom_callback);
+
   ros::Rate r(1);
   ros::Publisher marker_pub = n.advertise<visualization_msgs::Marker>("/visualization_marker", 1);
 
@@ -64,13 +103,43 @@ int main( int argc, char** argv )
     marker.type = shape;    
     marker.lifetime = ros::Duration();
 
-    SetMarker(marker_pub, marker, 0.6, 4.9, true);
+    SetMarker(marker_pub, marker, goals[current_goal][0], goals[current_goal][1], true);
 
+    // Enter an infinite loop where the laser_callback function will be called when new laser messages arrive
+    ros::Duration time_between_ros_wakeups(0.001);
+    while (ros::ok() && !current_goal_reached) {
+        ros::spinOnce();
+        time_between_ros_wakeups.sleep();
+    }
+
+    ROS_INFO("Picking up object ...\n");
+
+
+    // Picking object
     sleep(5);
-
     SetMarker(marker_pub, marker, 0.0, 0.0, false);
-    
-    sleep(5);
 
-    SetMarker(marker_pub, marker, -4.75, -0.25, true);
+    ROS_INFO("Object picked up, transporting ...\n");
+
+    // Move to next goal
+    ++current_goal;
+    current_goal_reached = false;
+
+    // Enter an infinite loop where the laser_callback function will be called when new laser messages arrive
+    while (ros::ok() && !current_goal_reached) {
+        ros::spinOnce();
+        time_between_ros_wakeups.sleep();
+    }
+
+    ROS_INFO("Dropping object...\n");
+
+    SetMarker(marker_pub, marker, goals[current_goal][0], goals[current_goal][1], true);
+
+    ROS_INFO("Object dropped.\n");
+
+    // Keep spinning for debug output
+    while (ros::ok()) {
+        ros::spinOnce();
+        time_between_ros_wakeups.sleep();
+    }
 }
